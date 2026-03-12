@@ -140,16 +140,17 @@
 
   // Parse BOM: col A=producto, col B=componente, col C=cantidad (con cabecera en fila 1)
   const parseBOM = ws => {
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""}).filter(r=>r.some(c=>c!==""));
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:"", raw:false}).filter(r=>r.some(c=>c!==""));
     if(rows.length < 2) return [];
     const res = [];
     for(let i=1;i<rows.length;i++){
       const r = rows[i];
       const prod = String(r[0]||"").trim();
       const comp = String(r[1]||"").trim();
-      const rawQty = r[2];
-      const qty = typeof rawQty === 'number' ? rawQty : parseFloat(String(rawQty||"").replace(",","."));
-      if(!prod||!comp||isNaN(qty)) continue;
+      if(!prod||!comp) continue;
+      const rawQty = String(r[2]||"").trim().replace(",",".");
+      const qty = parseFloat(rawQty);
+      if(isNaN(qty)) continue;
       res.push({producto:norm(prod), productoLabel:prod, componente:norm(comp), componenteLabel:comp, qty});
     }
     return res;
@@ -342,3 +343,4 @@
 </script>
 </body>
 </html>
+
