@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gestor de Producción y Stock</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f1f5f9; min-height: 100vh; padding: 24px 16px; color: #1e293b; }
+    .card { background: #fff; border-radius: 14px; box-shadow: 0 2px 12px #0001; max-width: 920px; margin: 0 auto; padding: 28px 24px; }
+    h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .subtitle { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+    .steps { display: flex; gap: 10px; justify-content: center; margin-bottom: 24px; flex-wrap: wrap; }
+    .step { font-size: 12px; font-weight: 600; padding-bottom: 3px; color: #94a3b8; border-bottom: 2px solid transparent; }
+    .step.active { color: #6366f1; border-color: #6366f1; }
+    .step.done { color: #16a34a; border-color: #16a34a; }
+    .uploads { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+    .upload-box { flex: 1; min-width: 200px; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 20px 14px; text-align: center; cursor: pointer; background: #f8fafc; transition: all .2s; }
+    .upload-box:hover { border-color: #6366f1; background: #6366f115; }
+    .upload-box.loaded { border-color: #16a34a; background: #dcfce720; }
+    .upload-box .icon { font-size: 28px; margin-bottom: 6px; }
+    .upload-box .label { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+    .upload-box .hint { font-size: 11px; color: #94a3b8; }
+    .upload-box.loaded .hint { color: #16a34a; font-weight: 600; }
+    .info-box { background: #f1f5f9; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #475569; margin-bottom: 14px; line-height: 1.7; }
+    .error { background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px; padding: 10px 14px; color: #dc2626; font-size: 13px; margin-bottom: 12px; }
+    .btn { width: 100%; padding: 12px; border-radius: 10px; border: none; background: #6366f1; color: #fff; font-weight: 700; font-size: 15px; cursor: pointer; transition: background .2s; }
+    .btn:hover { background: #4f46e5; }
+    .btn.secondary { background: #fff; color: #475569; border: 1px solid #e2e8f0; }
+    .btn.secondary:hover { background: #f8fafc; }
+    .btn.cyan { background: #0ea5e9; }
+    .btn.cyan:hover { background: #0284c7; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-row .btn { flex: 1; font-size: 13px; padding: 11px; }
+    .qty-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .qty-row { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; }
+    .qty-row span { font-weight: 600; font-size: 14px; }
+    .qty-controls { display: flex; align-items: center; gap: 8px; }
+    .qty-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f1f5f9; font-weight: 700; font-size: 16px; cursor: pointer; }
+    .qty-input { width: 60px; text-align: center; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 6px; font-size: 14px; font-weight: 700; }
+    .summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+    .summary-card { flex: 1; min-width: 90px; border-radius: 10px; padding: 12px 10px; text-align: center; }
+    .summary-card .s-icon { font-size: 20px; }
+    .summary-card .s-count { font-size: 22px; font-weight: 800; }
+    .summary-card .s-label { font-size: 11px; font-weight: 600; }
+    .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead tr { background: #f8fafc; }
+    th { padding: 9px 12px; font-weight: 700; color: #475569; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    th.r { text-align: right; }
+    td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+    td.r { text-align: right; }
+    tr:nth-child(even) { background: #f8fafc; }
+    .badge { border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .section-title { font-size: 15px; font-weight: 700; margin-bottom: 14px; }
+    .saved-banner { background: #dcfce7; border: 1px solid #86efac; border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #16a34a; font-weight: 600; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div style="text-align:center;margin-bottom:8px">
+    <div style="font-size:36px">🏭</div>
+    <h1>Gestor de Producción y Stock</h1>
+    <p class="subtitle">Calcula qué materiales faltan y cuáles hay que pedir de MIRO</p>
+  </div>
+
+  <div class="steps">
+    <div class="step active" id="s1">1. Cargar archivos</div>
+    <div class="step" id="s2">2. Cantidades</div>
+    <div class="step" id="s3">3. Resultados</div>
+  </div>
+
+  <div id="error-box" class="error" style="display:none"></div>
+
+  <!-- STEP 1 -->
+  <div id="step1">
+    <div id="saved-banner" class="saved-banner" style="display:none">✅ Archivos guardados de la sesión anterior cargados automáticamente.</div>
+    <div class="uploads">
+      <div class="upload-box" id="box-bom" onclick="document.getElementById('file-bom').click()">
+        <input type="file" id="file-bom" accept=".csv,.xlsx,.xls,.txt" style="display:none" onchange="loadBOM(this.files[0])">
+        <div class="icon" id="icon-bom">📂</div>
+        <div class="label">Lista de Materiales (BOM)</div>
+        <div class="hint" id="hint-bom">Columnas: Producto | Componente | Cantidad</div>
+      </div>
+      <div class="upload-box" id="box-stock" onclick="document.getElementById('file-stock').click()">
+        <input type="file" id="file-stock" accept=".csv,.xlsx,.xls,.txt" style="display:none" onchange="loadStock(this.files[0])">
+        <div class="icon" id="icon-stock">📂</div>
+        <div class="label">Stock Disponible</div>
+        <div class="hint" id="hint-stock">Columnas: Componente | Stock Total | Stock MIRO</div>
+      </div>
+    </div>
+    <div class="info-box">
+      <strong>Formato BOM:</strong> Producto, Componente, Cantidad por unidad<br>
+      <strong>Formato Stock:</strong> Componente, Stock Total, Stock en MIRO<br>
+      La primera fila debe ser la cabecera. Se admiten Excel y CSV.<br>
+      <strong>Los archivos se guardan automáticamente</strong> para no tener que cargarlos cada vez.
+    </div>
+    <button class="btn" onclick="goStep2()">Siguiente →</button>
+  </div>
+
+  <!-- STEP 2 -->
+  <div id="step2" style="display:none">
+    <div class="section-title">¿Cuántas unidades quieres fabricar?</div>
+    <div class="qty-list" id="qty-list"></div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="goStep(1)">← Atrás</button>
+      <button class="btn" onclick="calculate()" style="flex:2">🔍 Calcular materiales</button>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div id="step3" style="display:none">
+    <div class="summary" id="summary"></div>
+    <div class="table-wrap"><table id="result-table"></table></div>
+    <div class="btn-row">
+      <button class="btn cyan" onclick="exportCSV()">⬇️ Exportar CSV</button>
+      <button class="btn secondary" onclick="goStep(2)">← Cantidades</button>
+      <button class="btn secondary" onclick="goStep(1)">🔄 Nueva consulta</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let bom = [], stockMap = {}, products = [], quantities = {}, results = [];
+
+  const norm = (s) => String(s).trim().toLowerCase();
+
+  // ── localStorage helpers ──
+  const save = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch(e){} };
+  const load = (key) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch(e){ return null; } };
+
+  // ── init: load saved data ──
+  window.onload = () => {
+    const savedBom = load('bom');
+    const savedStock = load('stock');
+    if (savedBom && savedStock) {
+      bom = savedBom; stockMap = savedStock;
+      setupProducts();
+      document.getElementById('saved-banner').style.display = 'block';
+      document.getElementById('icon-bom').textContent = '✅';
+      document.getElementById('hint-bom').textContent = 'Archivo guardado';
+      document.getElementById('box-bom').classList.add('loaded');
+      document.getElementById('icon-stock').textContent = '✅';
+      document.getElementById('hint-stock').textContent = 'Archivo guardado';
+      document.getElementById('box-stock').classList.add('loaded');
+    }
+  };
+
+  // ── file parsing ──
+  const toRows = (ws) => XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }).filter(r => r.some(c => c !== ""));
+
+  const parseBOM = (ws) => {
+    const rows = toRows(ws); if (rows.length < 2) return [];
+    const res = [];
+    for (let i = 1; i < rows.length; i++) {
+      const [prod, comp, qty] = rows[i];
+      const q = parseFloat(String(qty).replace(',', '.'));
+      if (!prod || !comp || isNaN(q)) continue;
+      res.push({ producto: norm(prod), productoLabel: String(prod).trim(), componente: norm(comp), componenteLabel: String(comp).trim(), qty: q });
+    }
+    return res;
+  };
+
+  const parseStock = (ws) => {
+    const rows = toRows(ws); if (rows.length < 2) return {};
+    const map = {};
+    for (let i = 1; i < rows.length; i++) {
+      const [comp, total, miro] = rows[i];
+      if (!comp) continue;
+      map[norm(comp)] = { label: String(comp).trim(), total: parseFloat(String(total).replace(',','.')) || 0, miro: parseFloat(String(miro).replace(',','.')) || 0 };
+    }
+    return map;
+  };
+
+  const readWB = (file) => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = (e) => { try { res(XLSX.read(e.target.result, { type: 'array' })); } catch(err){ rej(err); } };
+    r.onerror = () => rej(new Error('Error leyendo archivo'));
+    r.readAsArrayBuffer(file);
+  });
+
+  async function loadBOM(file) {
+    try {
+      const wb = await readWB(file);
+      const rows = parseBOM(wb.Sheets[wb.SheetNames[0]]);
+      if (!rows.length) { showError('No se pudieron leer datos del BOM. Revisa el formato.'); return; }
+      bom = rows; save('bom', bom);
+      setupProducts();
+      document.getElementById('icon-bom').textContent = '✅';
+      document.getElementById('hint-bom').textContent = file.name;
+      document.getElementById('box-bom').classList.add('loaded');
+      clearError();
+    } catch(e) { showError('Error leyendo BOM: ' + e.message); }
+  }
+
+  async function loadStock(file) {
+    try {
+      const wb = await readWB(file);
+      const map = parseStock(wb.Sheets[wb.SheetNames[0]]);
+      if (!Object.keys(map).length) { showError('No se pudieron leer datos del Stock. Revisa el formato.'); return; }
+      stockMap = map; save('stock', stockMap);
+      document.getElementById('icon-stock').textContent = '✅';
+      document.getElementById('hint-stock').textContent = file.name;
+      document.getElementById('box-stock').classList.add('loaded');
+      clearError();
+    } catch(e) { showError('Error leyendo Stock: ' + e.message); }
+  }
+
+  function setupProducts() {
+    const seen = new Map();
+    bom.forEach(r => { if (!seen.has(r.producto)) seen.set(r.producto, r.productoLabel); });
+    products = [...seen.entries()].map(([k, v]) => ({ key: k, label: v }));
+    quantities = {};
+    products.forEach(p => { quantities[p.key] = 1; });
+  }
+
+  // ── steps ──
+  function goStep(n) {
+    [1,2,3].forEach(i => {
+      document.getElementById('step'+i).style.display = i === n ? '' : 'none';
+      const el = document.getElementById('s'+i);
+      el.className = 'step' + (i === n ? ' active' : i < n ? ' done' : '');
+    });
+    clearError();
+  }
+
+  function goStep2() {
+    if (!bom.length || !Object.keys(stockMap).length) { showError('Sube los dos archivos primero.'); return; }
+    renderQty(); goStep(2);
+  }
+
+  function renderQty() {
+    const el = document.getElementById('qty-list');
+    el.innerHTML = products.map(p => `
+      <div class="qty-row">
+        <span>${p.label}</span>
+        <div class="qty-controls">
+          <button class="qty-btn" onclick="changeQty('${p.key}',-1)">−</button>
+          <input class="qty-input" type="number" min="0" id="qty-${p.key}" value="${quantities[p.key]||0}" onchange="quantities['${p.key}']=Math.max(0,parseInt(this.value)||0)">
+          <button class="qty-btn" onclick="changeQty('${p.key}',1)">+</button>
+        </div>
+      </div>`).join('');
+  }
+
+  function changeQty(key, delta) {
+    quantities[key] = Math.max(0, (quantities[key]||0) + delta);
+    const inp = document.getElementById('qty-'+key);
+    if (inp) inp.value = quantities[key];
+  }
+
+  function calculate() {
+    const needed = {};
+    bom.forEach(row => {
+      const qty = quantities[row.producto] || 0; if (qty <= 0) return;
+      if (!needed[row.componente]) needed[row.componente] = { label: row.componenteLabel, total: 0 };
+      needed[row.componente].total += row.qty * qty;
+    });
+
+    results = Object.entries(needed).map(([key, {label, total}]) => {
+      const s = stockMap[key] || { total: 0, miro: 0 };
+      const stockDisp = Math.max(0, s.total - s.miro);
+      const falta = Math.max(0, total - s.total);
+      const pedir = s.miro > 0 && stockDisp < total ? Math.min(s.miro, total - stockDisp) : 0;
+      let status, statusLabel, color, bg;
+      if (falta === 0 && pedir === 0) { status='ok'; statusLabel='✅ OK'; color='#16a34a'; bg='#dcfce7'; }
+      else if (falta === 0 && pedir > 0) { status='miro'; statusLabel='🏭 Sacar de MIRO'; color='#7c3aed'; bg='#ede9fe'; }
+      else if (s.total > 0) { status='partial'; statusLabel='⚠️ Pedir parcial'; color='#d97706'; bg='#fef3c7'; }
+      else { status='missing'; statusLabel='❌ Pedir todo'; color='#dc2626'; bg='#fee2e2'; }
+      return { componenteLabel: label, needed: total, stockTotal: s.total, stockMiro: s.miro, falta, pedir, status, statusLabel, color, bg };
+    });
+
+    renderSummary(); renderTable(); goStep(3);
+  }
+
+  function renderSummary() {
+    const cnt = { ok:0, miro:0, partial:0, missing:0 };
+    results.forEach(r => cnt[r.status]++);
+    document.getElementById('summary').innerHTML = [
+      { label:'OK', count:cnt.ok, bg:'#dcfce7', color:'#16a34a', icon:'✅' },
+      { label:'Sacar MIRO', count:cnt.miro, bg:'#ede9fe', color:'#7c3aed', icon:'🏭' },
+      { label:'Pedir parcial', count:cnt.partial, bg:'#fef3c7', color:'#d97706', icon:'⚠️' },
+      { label:'Pedir todo', count:cnt.missing, bg:'#fee2e2', color:'#dc2626', icon:'❌' },
+    ].map(s => `<div class="summary-card" style="background:${s.bg}">
+      <div class="s-icon">${s.icon}</div>
+      <div class="s-count" style="color:${s.color}">${s.count}</div>
+      <div class="s-label" style="color:${s.color}">${s.label}</div>
+    </div>`).join('');
+  }
+
+  function renderTable() {
+    const headers = ['Componente','Necesario','Stock Total','Stock MIRO','Falta','Pedir de MIRO','Estado'];
+    const thead = `<thead><tr>${headers.map((h,i) => `<th ${i>0&&i<6?'class="r"':''}>${h}</th>`).join('')}</tr></thead>`;
+    const tbody = '<tbody>' + results.map((r,i) => `<tr>
+      <td style="font-weight:500">${r.componenteLabel}</td>
+      <td class="r">${r.needed}</td>
+      <td class="r">${r.stockTotal}</td>
+      <td class="r" style="color:${r.stockMiro>0?'#7c3aed':'#94a3b8'};font-weight:${r.stockMiro>0?600:400}">${r.stockMiro}</td>
+      <td class="r" style="color:${r.falta>0?'#dc2626':'#16a34a'};font-weight:600">${r.falta}</td>
+      <td class="r" style="color:${r.pedir>0?'#7c3aed':'#94a3b8'};font-weight:${r.pedir>0?600:400}">${r.pedir}</td>
+      <td><span class="badge" style="background:${r.bg};color:${r.color}">${r.statusLabel}</span></td>
+    </tr>`).join('') + '</tbody>';
+    document.getElementById('result-table').innerHTML = thead + tbody;
+  }
+
+  function exportCSV() {
+    const h = 'Componente,Necesario,Stock Total,Stock MIRO,Falta,Pedir de MIRO,Estado\n';
+    const b = results.map(r => `"${r.componenteLabel}",${r.needed},${r.stockTotal},${r.stockMiro},${r.falta},${r.pedir},"${r.statusLabel}"`).join('\n');
+    const blob = new Blob(['\uFEFF'+h+b], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'resultado_produccion.csv'; a.click();
+  }
+
+  function showError(msg) { const el = document.getElementById('error-box'); el.textContent = msg; el.style.display = ''; }
+  function clearError() { document.getElementById('error-box').style.display = 'none'; }
+</script>
+</body>
+</html>
