@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gestor de Producción y Stock</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,sans-serif;background:#f1f5f9;min-height:100vh;padding:24px 16px;color:#1e293b}
+    .card{background:#fff;border-radius:14px;box-shadow:0 2px 12px #0001;max-width:960px;margin:0 auto;padding:28px 24px}
+    h1{font-size:22px;font-weight:800;margin-bottom:4px}
+    .subtitle{color:#64748b;font-size:13px;margin-bottom:24px}
+    .steps{display:flex;gap:10px;justify-content:center;margin-bottom:24px;flex-wrap:wrap}
+    .step{font-size:12px;font-weight:600;padding-bottom:3px;color:#94a3b8;border-bottom:2px solid transparent}
+    .step.active{color:#6366f1;border-color:#6366f1}
+    .step.done{color:#16a34a;border-color:#16a34a}
+    .upload-box{border:2px dashed #cbd5e1;border-radius:12px;padding:20px 14px;text-align:center;cursor:pointer;background:#f8fafc;transition:all .2s;width:100%}
+    .upload-box:hover{border-color:#6366f1;background:#6366f115}
+    .upload-box.loaded{border-color:#16a34a;background:#dcfce720}
+    .info-box{background:#f1f5f9;border-radius:8px;padding:10px 14px;font-size:12px;color:#475569;margin-bottom:14px;line-height:1.7}
+    .error{background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;color:#dc2626;font-size:13px;margin-bottom:12px}
+    .success{background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:8px 14px;font-size:12px;color:#16a34a;font-weight:600;margin-bottom:12px}
+    .btn{width:100%;padding:12px;border-radius:10px;border:none;background:#6366f1;color:#fff;font-weight:700;font-size:15px;cursor:pointer;transition:background .2s}
+    .btn:hover{background:#4f46e5}
+    .btn.secondary{background:#fff;color:#475569;border:1px solid #e2e8f0}
+    .btn.secondary:hover{background:#f8fafc}
+    .btn.cyan{background:#0ea5e9}
+    .btn.cyan:hover{background:#0284c7}
+    .btn.red{background:#ef4444}
+    .btn.red:hover{background:#dc2626}
+    .btn-row{display:flex;gap:10px;flex-wrap:wrap}
+    .btn-row .btn{flex:1;font-size:13px;padding:11px}
+    .section-title{font-size:15px;font-weight:700;margin-bottom:12px}
+    .ref-row{display:flex;align-items:center;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:8px}
+    .ref-row input{border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;font-size:14px;font-weight:600}
+    .ref-row input.ref-name{flex:2}
+    .ref-row input.ref-qty{width:80px;text-align:center}
+    .ref-row button{width:30px;height:30px;border-radius:6px;border:none;background:#fee2e2;color:#dc2626;font-weight:700;font-size:16px;cursor:pointer}
+    .add-btn{width:100%;padding:10px;border-radius:8px;border:2px dashed #cbd5e1;background:#f8fafc;color:#64748b;font-weight:600;font-size:14px;cursor:pointer;margin-bottom:14px}
+    .add-btn:hover{border-color:#6366f1;color:#6366f1}
+    .summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+    .summary-card{flex:1;min-width:90px;border-radius:10px;padding:12px 10px;text-align:center}
+    .table-wrap{overflow-x:auto;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    thead tr{background:#f8fafc}
+    th{padding:9px 12px;font-weight:700;color:#475569;border-bottom:1px solid #e2e8f0;white-space:nowrap}
+    th.r{text-align:right}
+    td{padding:8px 12px;border-bottom:1px solid #f1f5f9}
+    td.r{text-align:right}
+    tr:nth-child(even){background:#f8fafc}
+    .badge{border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+    .tag{display:inline-block;background:#e0e7ff;color:#4338ca;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:600;margin-right:3px}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div style="text-align:center;margin-bottom:8px">
+    <div style="font-size:36px">🏭</div>
+    <h1>Gestor de Producción y Stock</h1>
+    <p class="subtitle">Calcula qué materiales faltan y cuáles hay que pedir de MIRO</p>
+  </div>
+
+  <div class="steps">
+    <div class="step active" id="s1">1. BOM</div>
+    <div class="step" id="s2">2. Stock</div>
+    <div class="step" id="s3">3. Referencias</div>
+    <div class="step" id="s4">4. Resultados</div>
+  </div>
+
+  <div id="error-box" class="error" style="display:none"></div>
+
+  <!-- STEP 1: BOM (se guarda, solo se carga una vez) -->
+  <div id="step1">
+    <div id="bom-saved" class="success" style="display:none">✅ BOM cargado y guardado. Puedes continuar o reemplazarlo.</div>
+    <div class="section-title">📋 Lista de Materiales (BOM)</div>
+    <div class="upload-box" id="box-bom" onclick="document.getElementById('file-bom').click()" style="margin-bottom:14px">
+      <input type="file" id="file-bom" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadBOM(this.files[0])">
+      <div style="font-size:28px;margin-bottom:6px" id="icon-bom">📂</div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:3px">Subir archivo BOM</div>
+      <div style="font-size:11px;color:#94a3b8" id="hint-bom">Columna A: Referencia | Columna B: Componente | Columna C: Cantidad</div>
+    </div>
+    <div class="info-box">
+      <strong>Este archivo se guarda automáticamente.</strong> Solo necesitas cargarlo una vez.<br>
+      Formato: Columna A = Referencia a fabricar, Columna B = Componente, Columna C = Cantidad necesaria.<br>
+      La primera fila debe ser la cabecera.
+    </div>
+    <button class="btn" onclick="goStep2()">Siguiente →</button>
+  </div>
+
+  <!-- STEP 2: Stock (se carga cada vez) -->
+  <div id="step2" style="display:none">
+    <div class="section-title">📦 Stock Disponible</div>
+    <div class="upload-box" id="box-stock" onclick="document.getElementById('file-stock').click()" style="margin-bottom:14px">
+      <input type="file" id="file-stock" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadStock(this.files[0])">
+      <div style="font-size:28px;margin-bottom:6px" id="icon-stock">📂</div>
+      <div style="font-weight:700;font-size:14px;margin-bottom:3px">Subir archivo Stock</div>
+      <div style="font-size:11px;color:#94a3b8" id="hint-stock">Col B: Componente | Col E: Ubicación | Col G: Cantidad</div>
+    </div>
+    <div class="info-box">
+      Este archivo se carga cada vez que abras la app para tener el stock actualizado.<br>
+      Columna B = Componente, Columna E = Ubicación (MIRO u otras), Columna G = Cantidad.<br>
+      La primera fila debe ser la cabecera.
+    </div>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="goStep(1)">← Atrás</button>
+      <button class="btn" onclick="goStep3()" style="flex:2">Siguiente →</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: Referencias y cantidades -->
+  <div id="step3" style="display:none">
+    <div class="section-title">🔢 Referencias a fabricar</div>
+    <div id="ref-list"></div>
+    <button class="add-btn" onclick="addRef()">+ Añadir referencia</button>
+    <div class="btn-row">
+      <button class="btn secondary" onclick="goStep(2)">← Atrás</button>
+      <button class="btn" onclick="calculate()" style="flex:2">🔍 Calcular materiales</button>
+    </div>
+  </div>
+
+  <!-- STEP 4: Resultados -->
+  <div id="step4" style="display:none">
+    <div class="summary" id="summary"></div>
+    <div class="table-wrap"><table id="result-table"></table></div>
+    <div class="btn-row">
+      <button class="btn cyan" onclick="exportCSV()">⬇️ Exportar CSV</button>
+      <button class="btn secondary" onclick="goStep(3)">← Cambiar referencias</button>
+      <button class="btn secondary" onclick="goStep(2)">🔄 Nuevo stock</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let bom = [], stockMap = {}, refs = [{name:'',qty:1}], results = [];
+
+  const norm = s => String(s).trim().toLowerCase();
+  const save = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v))}catch(e){} };
+  const load = k => { try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null} };
+
+  // Parse BOM: col A=producto, col B=componente, col C=cantidad
+  const parseBOM = ws => {
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""}).filter(r=>r.some(c=>c!==""));
+    if(rows.length < 2) return [];
+    const res = [];
+    for(let i=1;i<rows.length;i++){
+      const r = rows[i];
+      const prod = String(r[0]||"").trim();
+      const comp = String(r[1]||"").trim();
+      const qty = parseFloat(String(r[2]||"").replace(",","."));
+      if(!prod||!comp||isNaN(qty)) continue;
+      res.push({producto:norm(prod), productoLabel:prod, componente:norm(comp), componenteLabel:comp, qty});
+    }
+    return res;
+  };
+
+  // Parse Stock: col B=componente(idx1), col E=ubicacion(idx4), col G=cantidad(idx6)
+  const parseStock = ws => {
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""}).filter(r=>r.some(c=>c!==""));
+    if(rows.length < 2) return {};
+    const map = {};
+    for(let i=1;i<rows.length;i++){
+      const r = rows[i];
+      const comp = String(r[1]||"").trim();
+      const ubic = String(r[4]||"").trim().toUpperCase();
+      const qty = parseFloat(String(r[6]||"").replace(",",".")) || 0;
+      if(!comp) continue;
+      const key = norm(comp);
+      if(!map[key]) map[key] = {label:comp, total:0, miro:0};
+      map[key].total += qty;
+      if(ubic === "MIRO") map[key].miro += qty;
+    }
+    return map;
+  };
+
+  const readWB = file => new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = e => { try{res(XLSX.read(e.target.result,{type:'array'}))}catch(err){rej(err)} };
+    r.onerror = () => rej(new Error("Error leyendo archivo"));
+    r.readAsArrayBuffer(file);
+  });
+
+  window.onload = () => {
+    const savedBom = load('bom2');
+    if(savedBom && savedBom.length){
+      bom = savedBom;
+      document.getElementById('bom-saved').style.display = '';
+      document.getElementById('icon-bom').textContent = '✅';
+      document.getElementById('hint-bom').textContent = `${bom.length} filas cargadas`;
+      document.getElementById('box-bom').classList.add('loaded');
+    }
+    renderRefs();
+  };
+
+  async function loadBOM(file){
+    try{
+      const wb = await readWB(file);
+      const rows = parseBOM(wb.Sheets[wb.SheetNames[0]]);
+      if(!rows.length){showError("No se pudieron leer datos del BOM. Revisa el formato.");return;}
+      bom = rows; save('bom2', bom);
+      document.getElementById('icon-bom').textContent = '✅';
+      document.getElementById('hint-bom').textContent = file.name + ` (${rows.length} filas)`;
+      document.getElementById('box-bom').classList.add('loaded');
+      document.getElementById('bom-saved').style.display = '';
+      clearError();
+    }catch(e){showError("Error leyendo BOM: "+e.message);}
+  }
+
+  async function loadStock(file){
+    try{
+      const wb = await readWB(file);
+      const map = parseStock(wb.Sheets[wb.SheetNames[0]]);
+      if(!Object.keys(map).length){showError("No se pudieron leer datos del Stock. Revisa el formato.");return;}
+      stockMap = map;
+      document.getElementById('icon-stock').textContent = '✅';
+      document.getElementById('hint-stock').textContent = file.name + ` (${Object.keys(map).length} componentes)`;
+      document.getElementById('box-stock').classList.add('loaded');
+      clearError();
+    }catch(e){showError("Error leyendo Stock: "+e.message);}
+  }
+
+  function goStep(n){
+    [1,2,3,4].forEach(i=>{
+      document.getElementById('step'+i).style.display = i===n?'':'none';
+      const el = document.getElementById('s'+i);
+      el.className = 'step'+(i===n?' active':i<n?' done':'');
+    });
+    clearError();
+  }
+
+  function goStep2(){
+    if(!bom.length){showError("Carga el archivo BOM primero.");return;}
+    goStep(2);
+  }
+
+  function goStep3(){
+    if(!Object.keys(stockMap).length){showError("Carga el archivo de Stock primero.");return;}
+    // Pre-fill refs with unique products from BOM if empty
+    const prods = [...new Set(bom.map(r=>r.productoLabel))];
+    if(refs.length===1 && refs[0].name===''){
+      refs = prods.map(p=>({name:p, qty:1}));
+    }
+    renderRefs(); goStep(3);
+  }
+
+  function renderRefs(){
+    const el = document.getElementById('ref-list');
+    el.innerHTML = refs.map((r,i)=>`
+      <div class="ref-row">
+        <input class="ref-name" type="text" placeholder="Referencia a fabricar" value="${r.name}"
+          onchange="refs[${i}].name=this.value">
+        <input class="ref-qty" type="number" min="0" value="${r.qty}"
+          onchange="refs[${i}].qty=Math.max(0,parseInt(this.value)||0)">
+        <span style="font-size:12px;color:#64748b">uds</span>
+        <button onclick="removeRef(${i})">×</button>
+      </div>`).join('');
+  }
+
+  function addRef(){ refs.push({name:'',qty:1}); renderRefs(); }
+  function removeRef(i){ if(refs.length>1){refs.splice(i,1);renderRefs();} }
+
+  function calculate(){
+    const activeRefs = refs.filter(r=>r.name.trim()&&r.qty>0);
+    if(!activeRefs.length){showError("Añade al menos una referencia con cantidad mayor a 0.");return;}
+
+    const needed = {};
+    activeRefs.forEach(ref=>{
+      const key = norm(ref.name);
+      const bomRows = bom.filter(b=>b.producto===key || b.productoLabel.toLowerCase()===key);
+      if(!bomRows.length){
+        // referencia no encontrada en BOM, la marcamos
+        if(!needed['__notfound__'+key]) needed['__notfound__'+key] = {label:'⚠️ '+ref.name+' (no encontrada en BOM)', total:0, notFound:true};
+        return;
+      }
+      bomRows.forEach(b=>{
+        if(!needed[b.componente]) needed[b.componente]={label:b.componenteLabel, total:0, refs:[]};
+        needed[b.componente].total += b.qty * ref.qty;
+        needed[b.componente].refs.push(ref.name);
+      });
+    });
+
+    results = Object.entries(needed).map(([key,{label,total,refs,notFound}])=>{
+      if(notFound) return {componenteLabel:label, needed:0, stockTotal:0, stockMiro:0, falta:0, pedir:0, status:'notfound', statusLabel:'⚠️ Sin BOM', color:'#92400e', bg:'#fef3c7', refs:[]};
+      const s = stockMap[key]||{total:0,miro:0};
+      const stockDisp = Math.max(0, s.total - s.miro);
+      const falta = Math.max(0, total - s.total);
+      const pedir = s.miro>0 && stockDisp<total ? Math.min(s.miro, total-stockDisp) : 0;
+      let status,statusLabel,color,bg;
+      if(falta===0&&pedir===0){status='ok';statusLabel='✅ OK';color='#16a34a';bg='#dcfce7';}
+      else if(falta===0&&pedir>0){status='miro';statusLabel='🏭 Sacar MIRO';color='#7c3aed';bg='#ede9fe';}
+      else if(s.total>0){status='partial';statusLabel='⚠️ Pedir parcial';color='#d97706';bg='#fef3c7';}
+      else{status='missing';statusLabel='❌ Pedir todo';color='#dc2626';bg='#fee2e2';}
+      return {componenteLabel:label, needed:total, stockTotal:s.total, stockMiro:s.miro, falta, pedir, status, statusLabel, color, bg, refs:refs||[]};
+    });
+
+    renderSummary(); renderTable(); goStep(4);
+  }
+
+  function renderSummary(){
+    const cnt={ok:0,miro:0,partial:0,missing:0};
+    results.forEach(r=>{ if(cnt[r.status]!==undefined) cnt[r.status]++; });
+    document.getElementById('summary').innerHTML=[
+      {label:'OK',count:cnt.ok,bg:'#dcfce7',color:'#16a34a',icon:'✅'},
+      {label:'Sacar MIRO',count:cnt.miro,bg:'#ede9fe',color:'#7c3aed',icon:'🏭'},
+      {label:'Pedir parcial',count:cnt.partial,bg:'#fef3c7',color:'#d97706',icon:'⚠️'},
+      {label:'Pedir todo',count:cnt.missing,bg:'#fee2e2',color:'#dc2626',icon:'❌'},
+    ].map(s=>`<div class="summary-card" style="background:${s.bg}">
+      <div style="font-size:20px">${s.icon}</div>
+      <div style="font-size:22px;font-weight:800;color:${s.color}">${s.count}</div>
+      <div style="font-size:11px;color:${s.color};font-weight:600">${s.label}</div>
+    </div>`).join('');
+  }
+
+  function renderTable(){
+    const h=`<thead><tr>
+      <th>Componente</th><th class="r">Necesario</th><th class="r">Stock Total</th>
+      <th class="r">Stock MIRO</th><th class="r">Falta</th><th class="r">Pedir MIRO</th><th>Estado</th>
+    </tr></thead>`;
+    const b='<tbody>'+results.map(r=>`<tr>
+      <td style="font-weight:500">${r.componenteLabel}</td>
+      <td class="r">${r.needed}</td>
+      <td class="r">${r.stockTotal}</td>
+      <td class="r" style="color:${r.stockMiro>0?'#7c3aed':'#94a3b8'};font-weight:${r.stockMiro>0?600:400}">${r.stockMiro}</td>
+      <td class="r" style="color:${r.falta>0?'#dc2626':'#16a34a'};font-weight:600">${r.falta}</td>
+      <td class="r" style="color:${r.pedir>0?'#7c3aed':'#94a3b8'};font-weight:${r.pedir>0?600:400}">${r.pedir}</td>
+      <td><span class="badge" style="background:${r.bg};color:${r.color}">${r.statusLabel}</span></td>
+    </tr>`).join('')+'</tbody>';
+    document.getElementById('result-table').innerHTML=h+b;
+  }
+
+  function exportCSV(){
+    const h='Componente,Necesario,Stock Total,Stock MIRO,Falta,Pedir de MIRO,Estado\n';
+    const b=results.map(r=>`"${r.componenteLabel}",${r.needed},${r.stockTotal},${r.stockMiro},${r.falta},${r.pedir},"${r.statusLabel}"`).join('\n');
+    const blob=new Blob(['\uFEFF'+h+b],{type:'text/csv;charset=utf-8;'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='resultado_produccion.csv';a.click();
+  }
+
+  function showError(msg){const el=document.getElementById('error-box');el.textContent=msg;el.style.display='';}
+  function clearError(){document.getElementById('error-box').style.display='none';}
+</script>
+</body>
+</html>
