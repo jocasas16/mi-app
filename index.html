@@ -313,13 +313,14 @@
     results=Object.entries(needed).map(([key,{label,total,notFound}])=>{
       if(notFound) return {componenteLabel:label, needed:0, stockTotal:0, stockMiro:0, falta:0, pedir:0, status:'notfound', statusLabel:'⚠️ Sin BOM', color:'#92400e', bg:'#fef3c7'};
       const s=stockMap[key]||{total:0,miro:0};
-      const stockDisp=Math.max(0,s.total-s.miro);
-      const falta=Math.max(0,total-s.total);
-      const pedir=s.miro>0&&stockDisp<total?Math.min(s.miro,total-stockDisp):0;
+      const stockFabrica=Math.max(0,s.total-s.miro); // stock fuera de MIRO
+      const falta=Math.max(0,total-s.total);          // lo que falta contando TODO el stock
+      // Cuánto hay que sacar de MIRO: solo si el stock fuera de MIRO no es suficiente
+      const pedir=falta===0&&s.miro>0&&stockFabrica<total?Math.min(s.miro,total-stockFabrica):0;
       let status,statusLabel,color,bg;
       if(falta===0&&pedir===0){status='ok';statusLabel='✅ OK';color='#16a34a';bg='#dcfce7';}
       else if(falta===0&&pedir>0){status='miro';statusLabel='🏭 Sacar MIRO';color='#7c3aed';bg='#ede9fe';}
-      else if(s.total>0){status='partial';statusLabel='⚠️ Pedir parcial';color='#d97706';bg='#fef3c7';}
+      else if(s.total>0&&falta>0){status='partial';statusLabel='⚠️ Pedir parcial';color='#d97706';bg='#fef3c7';}
       else{status='missing';statusLabel='❌ Pedir todo';color='#dc2626';bg='#fee2e2';}
       return {componenteLabel:label, needed:total, stockTotal:s.total, stockMiro:s.miro, falta, pedir, status, statusLabel, color, bg};
     });
