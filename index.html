@@ -269,7 +269,7 @@
       const wb = await readWB(file);
       const rows = parseProd(wb.Sheets[wb.SheetNames[0]]);
       if(!rows.length){showError("No se pudieron leer referencias del archivo. Revisa el formato.");return;}
-      refs=rows;
+      refs=rows; // reemplaza siempre
       document.getElementById('icon-prod').textContent='✅';
       document.getElementById('hint-prod').textContent=file.name+` (${rows.length} referencias)`;
       document.getElementById('box-prod').classList.add('loaded');
@@ -375,20 +375,20 @@
 
   // Exportar solo MIRO en Excel
   function exportMIROExcel(){
-    const miroRows = results.filter(r=>r.status==='miro'||r.status==='partial'||r.status==='missing');
-    if(!miroRows.length){alert("No hay materiales que pedir.");return;}
-    const data=[['Componente','Necesario','Stock Total','Stock MIRO','Falta','Pedir de MIRO','Estado']];
-    miroRows.forEach(r=>data.push([r.componenteLabel, r.needed, r.stockTotal, r.stockMiro, r.falta, r.pedir, r.statusLabel]));
+    const miroRows = results.filter(r=>r.status==='miro');
+    if(!miroRows.length){alert("No hay materiales que sacar de MIRO.");return;}
+    const data=[['Componente','Necesario','Stock Total','Stock MIRO','Pedir de MIRO','Estado']];
+    miroRows.forEach(r=>data.push([r.componenteLabel, r.needed, r.stockTotal, r.stockMiro, r.pedir, r.statusLabel]));
     const ws=XLSX.utils.aoa_to_sheet(data);
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,"Pedir MIRO");
     XLSX.writeFile(wb,"pedir_MIRO.xlsx");
   }
 
-  // Exportar sin stock en Excel
+  // Exportar sin stock (parcial + faltante) en Excel
   function exportSinStockExcel(){
-    const sinStock = results.filter(r=>r.status==='missing');
-    if(!sinStock.length){alert("No hay materiales sin stock.");return;}
+    const sinStock = results.filter(r=>r.status==='partial'||r.status==='missing');
+    if(!sinStock.length){alert("No hay materiales sin stock o con stock parcial.");return;}
     const data=[['Componente','Necesario','Stock Total','Falta','Estado']];
     sinStock.forEach(r=>data.push([r.componenteLabel, r.needed, r.stockTotal, r.falta, r.statusLabel]));
     const ws=XLSX.utils.aoa_to_sheet(data);
@@ -411,4 +411,3 @@
 </script>
 </body>
 </html>
-
