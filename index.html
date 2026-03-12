@@ -27,8 +27,8 @@
     .btn.secondary:hover{background:#f8fafc}
     .btn.cyan{background:#0ea5e9}
     .btn.cyan:hover{background:#0284c7}
-    .btn.red{background:#ef4444}
-    .btn.red:hover{background:#dc2626}
+    .btn.green{background:#16a34a}
+    .btn.green:hover{background:#15803d}
     .btn-row{display:flex;gap:10px;flex-wrap:wrap}
     .btn-row .btn{flex:1;font-size:13px;padding:11px}
     .section-title{font-size:15px;font-weight:700;margin-bottom:12px}
@@ -50,7 +50,7 @@
     td.r{text-align:right}
     tr:nth-child(even){background:#f8fafc}
     .badge{border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap}
-    .tag{display:inline-block;background:#e0e7ff;color:#4338ca;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:600;margin-right:3px}
+    .divider{border:none;border-top:1px solid #e2e8f0;margin:14px 0}
   </style>
 </head>
 <body>
@@ -70,7 +70,7 @@
 
   <div id="error-box" class="error" style="display:none"></div>
 
-  <!-- STEP 1: BOM (se guarda, solo se carga una vez) -->
+  <!-- STEP 1: BOM -->
   <div id="step1">
     <div id="bom-saved" class="success" style="display:none">✅ BOM cargado y guardado. Puedes continuar o reemplazarlo.</div>
     <div class="section-title">📋 Lista de Materiales (BOM)</div>
@@ -83,12 +83,12 @@
     <div class="info-box">
       <strong>Este archivo se guarda automáticamente.</strong> Solo necesitas cargarlo una vez.<br>
       Formato: Columna A = Referencia a fabricar, Columna B = Componente, Columna C = Cantidad necesaria.<br>
-      La primera fila debe ser la cabecera.
+      La primera fila debe ser la cabecera. Se admiten Excel y CSV.
     </div>
     <button class="btn" onclick="goStep2()">Siguiente →</button>
   </div>
 
-  <!-- STEP 2: Stock (se carga cada vez) -->
+  <!-- STEP 2: Stock -->
   <div id="step2" style="display:none">
     <div class="section-title">📦 Stock Disponible</div>
     <div class="upload-box" id="box-stock" onclick="document.getElementById('file-stock').click()" style="margin-bottom:14px">
@@ -108,11 +108,23 @@
     </div>
   </div>
 
-  <!-- STEP 3: Referencias y cantidades -->
+  <!-- STEP 3: Referencias -->
   <div id="step3" style="display:none">
     <div class="section-title">🔢 Referencias a fabricar</div>
+
+    <!-- Opción cargar archivo -->
+    <div class="upload-box" id="box-prod" onclick="document.getElementById('file-prod').click()" style="margin-bottom:10px">
+      <input type="file" id="file-prod" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadProd(this.files[0])">
+      <div style="font-size:22px;margin-bottom:4px" id="icon-prod">📂</div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:2px">Cargar archivo de producción</div>
+      <div style="font-size:11px;color:#94a3b8" id="hint-prod">Columna A: Referencia | Columna B: Cantidad a fabricar</div>
+    </div>
+
+    <div style="text-align:center;color:#94a3b8;font-size:12px;margin:8px 0">— o introduce manualmente —</div>
+
     <div id="ref-list"></div>
-    <button class="add-btn" onclick="addRef()">+ Añadir referencia</button>
+    <button class="add-btn" onclick="addRef()">+ Añadir referencia manualmente</button>
+
     <div class="btn-row">
       <button class="btn secondary" onclick="goStep(2)">← Atrás</button>
       <button class="btn" onclick="calculate()" style="flex:2">🔍 Calcular materiales</button>
@@ -123,8 +135,12 @@
   <div id="step4" style="display:none">
     <div class="summary" id="summary"></div>
     <div class="table-wrap"><table id="result-table"></table></div>
+    <div class="btn-row" style="margin-bottom:10px">
+      <button class="btn green" onclick="exportMIROExcel()">⬇️ Pedir MIRO (Excel)</button>
+      <button class="btn" style="background:#dc2626" onclick="exportSinStockExcel()">⬇️ Sin stock (Excel)</button>
+      <button class="btn cyan" onclick="exportCSV()">⬇️ Todo (CSV)</button>
+    </div>
     <div class="btn-row">
-      <button class="btn cyan" onclick="exportCSV()">⬇️ Exportar CSV</button>
       <button class="btn secondary" onclick="goStep(3)">← Cambiar referencias</button>
       <button class="btn secondary" onclick="goStep(2)">🔄 Nuevo stock</button>
     </div>
@@ -132,13 +148,20 @@
 </div>
 
 <script>
-  let bom = [], stockMap = {}, refs = [{name:'',qty:1}], results = [];
+  let bom=[], stockMap={}, refs=[{name:'',qty:1}], results=[];
 
   const norm = s => String(s).trim().toLowerCase();
   const save = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v))}catch(e){} };
   const load = k => { try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null} };
 
-  // Parse BOM: col A=producto, col B=componente, col C=cantidad (con cabecera en fila 1)
+  const readWB = file => new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = e => { try{res(XLSX.read(e.target.result,{type:'array'}))}catch(err){rej(err)} };
+    r.onerror = () => rej(new Error("Error leyendo archivo"));
+    r.readAsArrayBuffer(file);
+  });
+
+  // Parse BOM: col A=producto, col B=componente, col C=cantidad
   const parseBOM = ws => {
     const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:"", raw:false}).filter(r=>r.some(c=>c!==""));
     if(rows.length < 2) return [];
@@ -148,8 +171,7 @@
       const prod = String(r[0]||"").trim();
       const comp = String(r[1]||"").trim();
       if(!prod||!comp) continue;
-      const rawQty = String(r[2]||"").trim().replace(",",".");
-      const qty = parseFloat(rawQty);
+      const qty = parseFloat(String(r[2]||"").trim().replace(",","."));
       if(isNaN(qty)) continue;
       res.push({producto:norm(prod), productoLabel:prod, componente:norm(comp), componenteLabel:comp, qty});
     }
@@ -158,7 +180,7 @@
 
   // Parse Stock: col B=componente(idx1), col E=ubicacion(idx4), col G=cantidad(idx6)
   const parseStock = ws => {
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""}).filter(r=>r.some(c=>c!==""));
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:"", raw:false}).filter(r=>r.some(c=>c!==""));
     if(rows.length < 2) return {};
     const map = {};
     for(let i=1;i<rows.length;i++){
@@ -168,27 +190,35 @@
       const qty = parseFloat(String(r[6]||"").replace(",",".")) || 0;
       if(!comp) continue;
       const key = norm(comp);
-      if(!map[key]) map[key] = {label:comp, total:0, miro:0};
+      if(!map[key]) map[key]={label:comp, total:0, miro:0};
       map[key].total += qty;
-      if(ubic === "MIRO") map[key].miro += qty;
+      if(ubic==="MIRO") map[key].miro += qty;
     }
     return map;
   };
 
-  const readWB = file => new Promise((res,rej) => {
-    const r = new FileReader();
-    r.onload = e => { try{res(XLSX.read(e.target.result,{type:'array'}))}catch(err){rej(err)} };
-    r.onerror = () => rej(new Error("Error leyendo archivo"));
-    r.readAsArrayBuffer(file);
-  });
+  // Parse Producción: col A=referencia, col B=cantidad
+  const parseProd = ws => {
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:"", raw:false}).filter(r=>r.some(c=>c!==""));
+    if(rows.length < 2) return [];
+    const res = [];
+    for(let i=1;i<rows.length;i++){
+      const r = rows[i];
+      const ref = String(r[0]||"").trim();
+      const qty = parseFloat(String(r[1]||"").replace(",","."));
+      if(!ref||isNaN(qty)||qty<=0) continue;
+      res.push({name:ref, qty});
+    }
+    return res;
+  };
 
   window.onload = () => {
-    const savedBom = load('bom2');
+    const savedBom = load('bom3');
     if(savedBom && savedBom.length){
       bom = savedBom;
-      document.getElementById('bom-saved').style.display = '';
-      document.getElementById('icon-bom').textContent = '✅';
-      document.getElementById('hint-bom').textContent = `${bom.length} filas cargadas`;
+      document.getElementById('bom-saved').style.display='';
+      document.getElementById('icon-bom').textContent='✅';
+      document.getElementById('hint-bom').textContent=`${bom.length} filas cargadas`;
       document.getElementById('box-bom').classList.add('loaded');
     }
     renderRefs();
@@ -199,11 +229,11 @@
       const wb = await readWB(file);
       const rows = parseBOM(wb.Sheets[wb.SheetNames[0]]);
       if(!rows.length){showError("No se pudieron leer datos del BOM. Revisa el formato.");return;}
-      bom = rows; save('bom2', bom);
-      document.getElementById('icon-bom').textContent = '✅';
-      document.getElementById('hint-bom').textContent = file.name + ` (${rows.length} filas)`;
+      bom=rows; save('bom3',bom);
+      document.getElementById('icon-bom').textContent='✅';
+      document.getElementById('hint-bom').textContent=file.name+` (${rows.length} filas)`;
       document.getElementById('box-bom').classList.add('loaded');
-      document.getElementById('bom-saved').style.display = '';
+      document.getElementById('bom-saved').style.display='';
       clearError();
     }catch(e){showError("Error leyendo BOM: "+e.message);}
   }
@@ -213,41 +243,42 @@
       const wb = await readWB(file);
       const map = parseStock(wb.Sheets[wb.SheetNames[0]]);
       if(!Object.keys(map).length){showError("No se pudieron leer datos del Stock. Revisa el formato.");return;}
-      stockMap = map;
-      document.getElementById('icon-stock').textContent = '✅';
-      document.getElementById('hint-stock').textContent = file.name + ` (${Object.keys(map).length} componentes)`;
+      stockMap=map;
+      document.getElementById('icon-stock').textContent='✅';
+      document.getElementById('hint-stock').textContent=file.name+` (${Object.keys(map).length} componentes)`;
       document.getElementById('box-stock').classList.add('loaded');
       clearError();
     }catch(e){showError("Error leyendo Stock: "+e.message);}
   }
 
+  async function loadProd(file){
+    try{
+      const wb = await readWB(file);
+      const rows = parseProd(wb.Sheets[wb.SheetNames[0]]);
+      if(!rows.length){showError("No se pudieron leer referencias del archivo. Revisa el formato.");return;}
+      refs=rows;
+      document.getElementById('icon-prod').textContent='✅';
+      document.getElementById('hint-prod').textContent=file.name+` (${rows.length} referencias)`;
+      document.getElementById('box-prod').classList.add('loaded');
+      renderRefs(); clearError();
+    }catch(e){showError("Error leyendo archivo de producción: "+e.message);}
+  }
+
   function goStep(n){
     [1,2,3,4].forEach(i=>{
-      document.getElementById('step'+i).style.display = i===n?'':'none';
-      const el = document.getElementById('s'+i);
-      el.className = 'step'+(i===n?' active':i<n?' done':'');
+      document.getElementById('step'+i).style.display=i===n?'':'none';
+      const el=document.getElementById('s'+i);
+      el.className='step'+(i===n?' active':i<n?' done':'');
     });
     clearError();
   }
 
-  function goStep2(){
-    if(!bom.length){showError("Carga el archivo BOM primero.");return;}
-    goStep(2);
-  }
-
-  function goStep3(){
-    if(!Object.keys(stockMap).length){showError("Carga el archivo de Stock primero.");return;}
-    // Pre-fill refs with unique products from BOM if empty
-    const prods = [...new Set(bom.map(r=>r.productoLabel))];
-    if(refs.length===1 && refs[0].name===''){
-      refs = prods.map(p=>({name:p, qty:1}));
-    }
-    renderRefs(); goStep(3);
-  }
+  function goStep2(){ if(!bom.length){showError("Carga el archivo BOM primero.");return;} goStep(2); }
+  function goStep3(){ if(!Object.keys(stockMap).length){showError("Carga el archivo de Stock primero.");return;} renderRefs(); goStep(3); }
 
   function renderRefs(){
-    const el = document.getElementById('ref-list');
-    el.innerHTML = refs.map((r,i)=>`
+    const el=document.getElementById('ref-list');
+    el.innerHTML=refs.map((r,i)=>`
       <div class="ref-row">
         <input class="ref-name" type="text" placeholder="Referencia a fabricar" value="${r.name}"
           onchange="refs[${i}].name=this.value">
@@ -262,37 +293,35 @@
   function removeRef(i){ if(refs.length>1){refs.splice(i,1);renderRefs();} }
 
   function calculate(){
-    const activeRefs = refs.filter(r=>r.name.trim()&&r.qty>0);
+    const activeRefs=refs.filter(r=>r.name.trim()&&r.qty>0);
     if(!activeRefs.length){showError("Añade al menos una referencia con cantidad mayor a 0.");return;}
 
-    const needed = {};
+    const needed={};
     activeRefs.forEach(ref=>{
-      const key = norm(ref.name);
-      const bomRows = bom.filter(b=>b.producto===key || b.productoLabel.toLowerCase()===key);
+      const key=norm(ref.name);
+      const bomRows=bom.filter(b=>b.producto===key);
       if(!bomRows.length){
-        // referencia no encontrada en BOM, la marcamos
-        if(!needed['__notfound__'+key]) needed['__notfound__'+key] = {label:'⚠️ '+ref.name+' (no encontrada en BOM)', total:0, notFound:true};
+        needed['__nf__'+key]={label:'⚠️ '+ref.name+' (no en BOM)', total:0, notFound:true};
         return;
       }
       bomRows.forEach(b=>{
-        if(!needed[b.componente]) needed[b.componente]={label:b.componenteLabel, total:0, refs:[]};
-        needed[b.componente].total += b.qty * ref.qty;
-        needed[b.componente].refs.push(ref.name);
+        if(!needed[b.componente]) needed[b.componente]={label:b.componenteLabel, total:0};
+        needed[b.componente].total += b.qty*ref.qty;
       });
     });
 
-    results = Object.entries(needed).map(([key,{label,total,refs,notFound}])=>{
-      if(notFound) return {componenteLabel:label, needed:0, stockTotal:0, stockMiro:0, falta:0, pedir:0, status:'notfound', statusLabel:'⚠️ Sin BOM', color:'#92400e', bg:'#fef3c7', refs:[]};
-      const s = stockMap[key]||{total:0,miro:0};
-      const stockDisp = Math.max(0, s.total - s.miro);
-      const falta = Math.max(0, total - s.total);
-      const pedir = s.miro>0 && stockDisp<total ? Math.min(s.miro, total-stockDisp) : 0;
+    results=Object.entries(needed).map(([key,{label,total,notFound}])=>{
+      if(notFound) return {componenteLabel:label, needed:0, stockTotal:0, stockMiro:0, falta:0, pedir:0, status:'notfound', statusLabel:'⚠️ Sin BOM', color:'#92400e', bg:'#fef3c7'};
+      const s=stockMap[key]||{total:0,miro:0};
+      const stockDisp=Math.max(0,s.total-s.miro);
+      const falta=Math.max(0,total-s.total);
+      const pedir=s.miro>0&&stockDisp<total?Math.min(s.miro,total-stockDisp):0;
       let status,statusLabel,color,bg;
       if(falta===0&&pedir===0){status='ok';statusLabel='✅ OK';color='#16a34a';bg='#dcfce7';}
       else if(falta===0&&pedir>0){status='miro';statusLabel='🏭 Sacar MIRO';color='#7c3aed';bg='#ede9fe';}
       else if(s.total>0){status='partial';statusLabel='⚠️ Pedir parcial';color='#d97706';bg='#fef3c7';}
       else{status='missing';statusLabel='❌ Pedir todo';color='#dc2626';bg='#fee2e2';}
-      return {componenteLabel:label, needed:total, stockTotal:s.total, stockMiro:s.miro, falta, pedir, status, statusLabel, color, bg, refs:refs||[]};
+      return {componenteLabel:label, needed:total, stockTotal:s.total, stockMiro:s.miro, falta, pedir, status, statusLabel, color, bg};
     });
 
     renderSummary(); renderTable(); goStep(4);
@@ -330,6 +359,31 @@
     document.getElementById('result-table').innerHTML=h+b;
   }
 
+  // Exportar solo MIRO en Excel
+  function exportMIROExcel(){
+    const miroRows = results.filter(r=>r.status==='miro'||r.status==='partial'||r.status==='missing');
+    if(!miroRows.length){alert("No hay materiales que pedir.");return;}
+    const data=[['Componente','Necesario','Stock Total','Stock MIRO','Falta','Pedir de MIRO','Estado']];
+    miroRows.forEach(r=>data.push([r.componenteLabel, r.needed, r.stockTotal, r.stockMiro, r.falta, r.pedir, r.statusLabel]));
+    const ws=XLSX.utils.aoa_to_sheet(data);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Pedir MIRO");
+    XLSX.writeFile(wb,"pedir_MIRO.xlsx");
+  }
+
+  // Exportar sin stock en Excel
+  function exportSinStockExcel(){
+    const sinStock = results.filter(r=>r.status==='missing');
+    if(!sinStock.length){alert("No hay materiales sin stock.");return;}
+    const data=[['Componente','Necesario','Stock Total','Falta','Estado']];
+    sinStock.forEach(r=>data.push([r.componenteLabel, r.needed, r.stockTotal, r.falta, r.statusLabel]));
+    const ws=XLSX.utils.aoa_to_sheet(data);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Sin Stock");
+    XLSX.writeFile(wb,"sin_stock.xlsx");
+  }
+
+  // Exportar todo en CSV
   function exportCSV(){
     const h='Componente,Necesario,Stock Total,Stock MIRO,Falta,Pedir de MIRO,Estado\n';
     const b=results.map(r=>`"${r.componenteLabel}",${r.needed},${r.stockTotal},${r.stockMiro},${r.falta},${r.pedir},"${r.statusLabel}"`).join('\n');
