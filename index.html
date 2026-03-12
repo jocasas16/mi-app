@@ -178,16 +178,29 @@
     return res;
   };
 
+  // Convierte número de Excel (puede venir como número o texto con separadores)
+  const parseNum = (val) => {
+    if(typeof val === 'number') return val;
+    // Elimina puntos de miles y reemplaza coma decimal
+    let s = String(val||"").trim();
+    // Si tiene punto y coma: formato europeo 1.234,56
+    if(s.includes(".") && s.includes(",")) s = s.replace(/\./g,"").replace(",",".");
+    // Solo coma: puede ser decimal europeo
+    else if(s.includes(",") && !s.includes(".")) s = s.replace(",",".");
+    // Solo punto: decimal anglosajón, dejarlo
+    return parseFloat(s) || 0;
+  };
+
   // Parse Stock: col B=componente(idx1), col E=ubicacion(idx4), col G=cantidad(idx6)
   const parseStock = ws => {
-    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:"", raw:false}).filter(r=>r.some(c=>c!==""));
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:"", raw:true}).filter(r=>r.some(c=>c!==""));
     if(rows.length < 2) return {};
     const map = {};
     for(let i=1;i<rows.length;i++){
       const r = rows[i];
       const comp = String(r[1]||"").trim();
       const ubic = String(r[4]||"").trim().toUpperCase();
-      const qty = parseFloat(String(r[6]||"").replace(",",".")) || 0;
+      const qty = parseNum(r[6]);
       if(!comp) continue;
       const key = norm(comp);
       if(!map[key]) map[key]={label:comp, total:0, miro:0};
