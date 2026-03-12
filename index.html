@@ -138,7 +138,7 @@
   const save = (k,v) => { try{localStorage.setItem(k,JSON.stringify(v))}catch(e){} };
   const load = k => { try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch(e){return null} };
 
-  // Parse BOM: col A=producto, col B=componente, col C=cantidad
+  // Parse BOM: col A=producto, col B=componente, col C=cantidad (con cabecera en fila 1)
   const parseBOM = ws => {
     const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:""}).filter(r=>r.some(c=>c!==""));
     if(rows.length < 2) return [];
@@ -147,7 +147,8 @@
       const r = rows[i];
       const prod = String(r[0]||"").trim();
       const comp = String(r[1]||"").trim();
-      const qty = parseFloat(String(r[2]||"").replace(",","."));
+      const rawQty = r[2];
+      const qty = typeof rawQty === 'number' ? rawQty : parseFloat(String(rawQty||"").replace(",","."));
       if(!prod||!comp||isNaN(qty)) continue;
       res.push({producto:norm(prod), productoLabel:prod, componente:norm(comp), componenteLabel:comp, qty});
     }
