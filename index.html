@@ -619,9 +619,9 @@ const parseStock = ws => {
 
 const parseProd = ws => {
   const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false}).filter(r=>r.some(c=>c!==""));
-  if(rows.length<2) return [];
+  if(!rows.length) return [];
   const res=[];
-  for(let i=1;i<rows.length;i++){
+  for(let i=0;i<rows.length;i++){
     const r=rows[i];
     const ref=String(r[0]||"").trim();
     const qty=parseFloat(String(r[1]||"").replace(",","."));
